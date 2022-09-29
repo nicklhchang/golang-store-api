@@ -16,11 +16,16 @@ import (
 	"go.mongodb.org/mongo-driver/mongo/options"
 
 	auth "gorilla-mongo-api/auth"
+	browse "gorilla-mongo-api/content"
 )
 
 var sessionCollection *mongo.Collection
 var userCollection *mongo.Collection
-var collections []*mongo.Collection
+var authCollections []*mongo.Collection
+
+var itemCollection *mongo.Collection
+var cartCollection *mongo.Collection
+var browseCollections []*mongo.Collection
 
 func init() {
 	// for initialising any constants/globals rest of program can access
@@ -42,32 +47,33 @@ func init() {
 	if err != nil {
 		log.Fatal(err)
 	}
-	sessionCollFound := false
-	userCollFound := false
+
+	collectionExists := map[string]bool{
+		"sessions": false,
+		"users":    false,
+		"items":    false,
+		"carts":    false,
+	}
 	for _, collection := range collectionNames {
-		if collection == "sessions" {
-			sessionCollFound = true
-		}
-		if collection == "users" {
-			userCollFound = true
+		collectionExists[collection] = true
+	}
+	for collName, exists := range collectionExists {
+		if !exists {
+			err := testDB.CreateCollection(context.TODO(), collName)
+			if err != nil {
+				log.Fatal(err)
+			}
 		}
 	}
-	if !sessionCollFound {
-		err = testDB.CreateCollection(context.TODO(), "sessions")
-		if err != nil {
-			log.Fatal(err)
-		}
-	}
-	if !userCollFound {
-		err = testDB.CreateCollection(context.TODO(), "users")
-		if err != nil {
-			log.Fatal(err)
-		}
-	}
-	userCollection = mongoClient.Database("golang-tests").Collection("users")
-	collections = append(collections, userCollection)
-	sessionCollection = mongoClient.Database("golang-tests").Collection("sessions")
-	collections = append(collections, sessionCollection)
+	sessionCollection = testDB.Collection("sessions")
+	authCollections = append(authCollections, sessionCollection)
+	userCollection = testDB.Collection("users")
+	authCollections = append(authCollections, userCollection)
+
+	itemCollection = testDB.Collection("items")
+	browseCollections = append(browseCollections, itemCollection)
+	cartCollection = testDB.Collection("carts")
+	browseCollections = append(browseCollections, cartCollection)
 }
 
 func chainMiddleware(baseHandler http.Handler,
@@ -100,8 +106,8 @@ func main() {
 	v1AuthRouter := apiV1Router.PathPrefix("/auth").Subrouter()
 	v1ContentRouter := apiV1Router.PathPrefix("/content").Subrouter()
 
-	v1AuthRouter.Handle("/register", auth.Register(collections...)).Methods("POST")
-	v1AuthRouter.Handle("/login", auth.Login(collections...)).Methods("POST")
+	v1AuthRouter.Handle("/register", auth.Register(authCollections...)).Methods("POST")
+	v1AuthRouter.Handle("/login", auth.Login(authCollections...)).Methods("POST")
 
 	v1ContentRouter.
 		// type http.HandlerFunc implements serveHTTP method;
@@ -110,6 +116,10 @@ func main() {
 			chainMiddleware(http.HandlerFunc(readCountAuthedUsers),
 				auth.AuthMiddleware(sessionCollection))).
 		Methods("GET")
+	v1ContentRouter.
+		Handle("/menu",
+			chainMiddleware(browse.GetMenuHandler(browseCollections...),
+				auth.AuthMiddleware(sessionCollection))).Methods("GET")
 
 	log.Fatal(http.ListenAndServe(":8080", router))
 }

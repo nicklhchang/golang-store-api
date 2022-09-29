@@ -79,7 +79,7 @@ func FindSession(searchSession bson.D, collection *mongo.Collection) (string, er
 // must receive signal (<-) before <-timeoutChan.C. cancellation maybe because
 // another goroutine has deleted already so no point making another trip to db
 func DeleteSessionTimeout(session bson.M, sCollection *mongo.Collection) {
-	timeoutChan := time.NewTimer(time.Duration(30 * time.Second))
+	timeoutChan := time.NewTimer(time.Duration(600 * time.Second))
 	<-timeoutChan.C // halt execution of this goroutine here until timeout
 	// doesn't matter how long it takes, session has to be deleted
 	_, err := sCollection.DeleteOne(context.TODO(), session)
@@ -93,6 +93,10 @@ func DeleteSessionTimeout(session bson.M, sCollection *mongo.Collection) {
 // no timeout on InsertOne either because important that user is registered in db
 func CreateNewUser(channel chan<- *mongo.InsertOneResult, userInfo map[string]string,
 	uCollection *mongo.Collection) {
+	/*
+		user documents have field "user" and "password" for now. if want "email" will need
+		an index with unique:true on both fields "user" and "email"
+	*/
 	pwdSaltedHashed := PwdStringToHashedHex(userInfo["pwd"])
 	// prepare bson.M for insertion into mongoDB
 	userDocument := make(bson.M)

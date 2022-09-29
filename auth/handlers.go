@@ -41,7 +41,7 @@ func Register(collections ...*mongo.Collection) http.Handler {
 		userAsBSOND = append(userAsBSOND, bson.E{Key: "user", Value: userInputMap["user"]})
 
 		// this has to block, because whether or not user exists determines course of action
-		found, err := Exists(userAsBSOND, collections[0])
+		found, err := Exists(userAsBSOND, collections[1])
 		if err != nil {
 			fmt.Println("could not complete search for user in sessions collection")
 		}
@@ -55,8 +55,8 @@ func Register(collections ...*mongo.Collection) http.Handler {
 		// is waiting (InsertOne blocks rest of Create...()); spawn goroutines for performance
 		userChan := make(chan *mongo.InsertOneResult)
 		sessionChan := make(chan string)
-		go CreateNewUser(userChan, userInputMap, collections[0])
-		go CreateNewSession(sessionChan, userInputMap, collections[1])
+		go CreateNewUser(userChan, userInputMap, collections[1])
+		go CreateNewSession(sessionChan, userInputMap, collections[0])
 
 		// prepare response while considering potential timeout
 		// if after 2 seconds both sessionID and user result not provided, timeout
@@ -118,7 +118,7 @@ func Login(collections ...*mongo.Collection) http.Handler {
 		grlchangrs := make(chan string)
 		// search for user existence in user collection
 		go func() {
-			userExists, err := VerifyUserCredentials(userInputMap, collections[0])
+			userExists, err := VerifyUserCredentials(userInputMap, collections[1])
 			if err != nil {
 				log.Fatal(err)
 			}
@@ -126,7 +126,7 @@ func Login(collections ...*mongo.Collection) http.Handler {
 		}()
 		// search for session existence in session collection
 		go func() {
-			session, err := FindSession(sessionAsBSOND, collections[1])
+			session, err := FindSession(sessionAsBSOND, collections[0])
 			if err != nil {
 				log.Fatal(err)
 			}
@@ -145,7 +145,7 @@ func Login(collections ...*mongo.Collection) http.Handler {
 					any valid session id to be sent back to client, user credentials will first be
 					verified anyways. */
 					chanSString := make(chan string)
-					go CreateNewSession(chanSString, userInputMap, collections[1])
+					go CreateNewSession(chanSString, userInputMap, collections[0])
 					cookie = <-chanSString
 				}
 				msg = "logged in" // now has a valid session but if user not exist msg gets overwritten

@@ -54,6 +54,7 @@ func AuthMiddleware(sCollection *mongo.Collection) func(http.Handler) http.Handl
 				switch exists {
 				case true:
 					json.NewEncoder(w).Encode(fmt.Sprintf("session id: %s", sessionID))
+					// cascade same w and r into next handler (handler for protected route)
 					handler.ServeHTTP(w, r)
 				case false:
 					json.NewEncoder(w).Encode(fmt.Sprintf("session id: %s invalid", sessionID))
