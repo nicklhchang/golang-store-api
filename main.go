@@ -16,7 +16,7 @@ import (
 	"go.mongodb.org/mongo-driver/mongo/options"
 
 	auth "gorilla-mongo-api/auth"
-	browse "gorilla-mongo-api/content"
+	content "gorilla-mongo-api/content"
 )
 
 var sessionCollection *mongo.Collection
@@ -25,7 +25,7 @@ var authCollections []*mongo.Collection
 
 var itemCollection *mongo.Collection
 var cartCollection *mongo.Collection
-var browseCollections []*mongo.Collection
+var contentCollections []*mongo.Collection // db collections for content routes
 
 func init() {
 	// for initialising any constants/globals rest of program can access
@@ -71,9 +71,9 @@ func init() {
 	authCollections = append(authCollections, userCollection)
 
 	itemCollection = testDB.Collection("items")
-	browseCollections = append(browseCollections, itemCollection)
+	contentCollections = append(contentCollections, itemCollection)
 	cartCollection = testDB.Collection("carts")
-	browseCollections = append(browseCollections, cartCollection)
+	contentCollections = append(contentCollections, cartCollection)
 }
 
 func chainMiddleware(baseHandler http.Handler,
@@ -116,10 +116,18 @@ func main() {
 			chainMiddleware(http.HandlerFunc(readCountAuthedUsers),
 				auth.AuthMiddleware(sessionCollection))).
 		Methods("GET")
+	// set middleware first
+	v1ContentRouter.Use(auth.AuthMiddleware(sessionCollection))
+	v1ContentRouter.Handle("/cart",
+		content.GetCartByUserSession(contentCollections...)).
+		Methods("GET")
 	v1ContentRouter.
 		Handle("/menu",
-			chainMiddleware(browse.GetMenuHandler(browseCollections...),
-				auth.AuthMiddleware(sessionCollection))).Methods("GET")
+			content.GetMenuHandler(contentCollections...)).
+		Methods("GET")
+	v1ContentRouter.Handle("/cart-upsert",
+		content.PutUpsertCartSync(contentCollections...)).
+		Methods("PUT")
 
 	log.Fatal(http.ListenAndServe(":8080", router))
 }

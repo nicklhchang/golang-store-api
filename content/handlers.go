@@ -12,14 +12,61 @@ import (
 	"go.mongodb.org/mongo-driver/mongo"
 )
 
+/*
+session is valid because auth.AuthMiddleware would have terminated otherwise.
+auth.AuthMiddleware still needed because Carts collection will save carts for a
+User's old sessions. so auth.AuthMiddleware essentially validates session validity,
+even though looking up a Cart in Carts collection may still find a record.
+
+because context is cancelled by ServeHTTP, cannot pass user and session to here,
+will just have to look up in Carts collection with the session-id in cookies.
+documents in Carts collection have unique user and session as well as the cart
+*/
 func GetCartByUserSession(collections ...*mongo.Collection) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
+		ptrCookieSlice := r.Cookies()
+		var sessionID string
+		for _, ptrCookie := range ptrCookieSlice {
+			if (*ptrCookie).Name == "session-id" {
+				sessionID = (*ptrCookie).Value
+			}
+		}
+		cartForUserSession, err := GetCart(sessionID, collections[1])
+		if err != nil {
+			fmt.Printf("let's investigate why search in db failed: %v", err)
+		}
+		if len(cartForUserSession) == 0 {
+			json.NewEncoder(w).Encode("no cart for user session combo")
+			return
+		}
+		// slice of bson.M's which type casted to map[string]interface{}
+		// var cartItemsAsSlice []map[string]interface{}
+		json.NewEncoder(w).Encode(fmt.Sprintf("cart for user's current session: %v\n", cartForUserSession))
+	})
+}
+
+func PutUpsertCartSync(collections ...*mongo.Collection) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		ptrCookieSlice := r.Cookies()
+		filter := bson.D{}
+		for _, ptrCookie := range ptrCookieSlice {
+			if (*ptrCookie).Name == "session-id" {
+				filter = append(filter, bson.E{Key: "session", Value: (*ptrCookie).Value})
+			}
+		}
+		// so far not handling any request body from post req
+		err := UpsertCart(filter, collections[1])
+		if err != nil {
+			fmt.Printf("here's the error when upserting cart: %v", err)
+		}
 	})
 }
 
 func GetMenuHandler(collections ...*mongo.Collection) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// fmt.Printf("request context: %v\n", r.Context())
 		w.Header().Set("Content-Type", "application/json")
 		// required to get request URL params
 		err := r.ParseForm()

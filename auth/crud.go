@@ -117,5 +117,6 @@ func VerifyUserCredentials(userInfo map[string]string,
 	var user bson.D
 	user = append(user, bson.E{Key: "user", Value: userInfo["user"]})
 	user = append(user, bson.E{Key: "pwd", Value: pwdSaltedHashed})
-	return Exists(user, uCollection)
+	exists, err := Exists(user, uCollection)
+	return exists, err
 }
